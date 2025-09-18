@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Sign Troubleshooting Diagram</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f8f8f8;
+            padding: 20px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 40px;
+            position: relative;
+        }
+
+        .box {
+            background: #fff;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 10px;
+            text-align: center;
+            position: relative;
+            z-index: 2;
+        }
+
+        .wide {
+            grid-column: span 6;
+        }
+
+        .half {
+            grid-column: span 3;
+        }
+
+        .third {
+            grid-column: span 2;
+        }
+
+        .label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        svg.connector-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        line {
+            stroke: #333;
+            stroke-width: 2;
+            marker-end: url(#arrowhead);
+        }
+
+        .ok {
+            background: #c8f7c5;
+        }
+
+        /* green */
+        .fault {
+            background: #f8c5c5;
+        }
+
+        /* red */
+    </style>
+</head>
+
+<body>
+    <h2>Neon Sign Troubleshooting Diagram</h2>
+    <p>Visualizing full power and control flow from wall to tubes.</p>
+
+    <div class="container">
+        <!-- Wall Power -->
+        <div class="box wide ok" id="wall">
+            <div class="label">Wall Power</div>
+            <p>AC Input</p>
+        </div>
+
+        <!-- On/Off Switch -->
+        <div class="box wide ok" id="switch">
+            <div class="label">On/Off Switch</div>
+            <p>Splits into 2 lines</p>
+        </div>
+
+        <!-- Line 1: Direct supply -->
+        <div class="box half ok" id="eh9030a">
+            <div class="label">EH-9030A</div>
+            <div class="label">Enhance Neon Power Supply, 6364V 30ma</div>
+            <p>Powers: Green Bay, Football Head, Budweiser</p>
+        </div>
+
+        <!-- Line 2: 12V DC Power Supply -->
+        <div class="box half ok" id="dc12">
+            <div class="label">12V DC Power Supply</div>
+            <p>Feeds EH-12C Controller</p>
+        </div>
+
+        <!-- Controller fed by 12V DC supply -->
+        <div class="box wide ok" id="controller">
+            <div class="label">EH-12C</div>
+            <div class="label">Enhance Neon Controller</div>
+            <p>2 Side Outputs (C01-C02) + 6 Top Outputs (C03-C08)</p>
+        </div>
+
+        <!-- Side Outputs -->
+        <div class="box third" id="side1">
+            <div class="label">Side: C01 → EH-1210</div>
+            <div class="label">Enhance Power Supply ~4KV 30ma</div>
+            <p>Powers: Back Leg 1</p>
+        </div>
+        <div class="box third" id="side2">
+            <div class="label">Side: C02 → EH-1210</div>
+            <div class="label">Enhance Power Supply ~4KV 30ma</div>
+            <p>Powers: Back Arm</p>
+        </div>
+
+        <!-- Top Outputs -->
+        <div class="box third" id="top1">
+            <div class="label">Top: C03 → EH-1210</div>
+            <div class="label">Enhance Power Supply ~4KV 30ma</div>
+            <p>Powers: TBD1</p>
+        </div>
+        <div class="box third" id="top2">
+            <div class="label">Top: C04 → EH-1210</div>
+            <div class="label">Enhance Power Supply ~4KV 30ma</div>
+            <p>Powers: TBD2</p>
+        </div>
+        <div class="box third" id="top3">
+            <div class="label">Top: C05 → EH-1210</div>
+            <div class="label">Enhance Power Supply ~4KV 30ma</div>
+            <p>Powers: TBD3</p>
+        </div>
+        <div class="box third" id="top4">
+            <div class="label">Top: C06 → EH-1210</div>
+            <div class="label">Enhance Power Supply ~4KV 30ma</div>
+            <p>Powers: TBD4</p>
+        </div>
+        <div class="box third" id="top5">
+            <div class="label">Top: C07</div>
+            <div class="label">Unused</div>
+        </div>
+        <div class="box third" id="top6">
+            <div class="label">Top: C08</div>
+            <div class="label">Unused</div>
+        </div>
+
+        <!-- Connectors -->
+        <svg class="connector-layer">
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+                </marker>
+            </defs>
+
+            <!-- Wall → Switch (bottom of wall to top of switch) -->
+            <line x1="50%" y1="88" x2="50%" y2="130" />
+
+            <!-- Switch → EH-9030A (bottom of switch to top of EH-9030A) -->
+            <line x1="40%" y1="220" x2="40%" y2="260" />
+
+            <!-- Switch → 12V DC Supply (bottom of switch to top of DC supply) -->
+            <line x1="60%" y1="220" x2="60%" y2="260" />
+
+            <!-- 12V DC Supply → Controller (bottom of DC supply to top of controller) -->
+            <line x1="75%" y1="375" x2="75%" y2="415" />
+
+            <!-- Controller → Side outputs (bottom of controller to top of side boxes) -->
+            <line x1="5%" y1="530" x2="5%" y2="570" />
+            <line x1="40%" y1="530" x2="40%" y2="570" />
+
+            <!-- Controller → Top outputs (bottom of controller to top of top boxes) -->
+            <line x1="25%" y1="530" x2="25%" y2="720" />
+            <line x1="60%" y1="530" x2="60%" y2="720" />
+            <line x1="95%" y1="530" x2="95%" y2="720" />
+            <line x1="75%" y1="530" x2="75%" y2="570" />
+        </svg>
+    </div>
+
+</body>
+
+</html>

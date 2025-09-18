@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Photo Marker Annotator</title>
+  <style>
+    :root { 
+      --ui:#111; --muted:#777; --accent:#0b5ed7; 
+      --zoom:1; 
+      --panel-max: 1400px;           /* overall page width cap */
+      --work-h: 82vh;                /* >>> height of the photo panel (change me) */
+      --marker-size: 34px; --marker-font: 18px;
+    }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#f7f7f7; margin:0; padding:24px; color:#111; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    p { margin: 0 0 16px; color: var(--muted); }
+
+    .panel { background:#fff; border:1px solid #ddd; border-radius:12px; padding:16px; width: min(100%, var(--panel-max)); margin: 0 auto; }
+    .controls { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+    .controls label { display:flex; gap:8px; align-items:center; }
+    .controls input[type="file"] { padding:6px 0; }
+    .controls select, .controls input[type="text"], .controls input[type="color"], .controls input[type="range"] { padding:6px 8px; border:1px solid #ccc; border-radius:8px; }
+    .btn { padding:8px 12px; border:1px solid var(--ui); border-radius:10px; background:#fff; cursor:pointer; }
+    .btn:active { transform: translateY(1px); }
+    .btn.muted { border-color:#bbb; color:#444; }
+    .btn.primary { border-color: var(--accent); color:#fff; background: var(--accent); }
+
+    .work { margin-top:16px; }
+    #photoWrap { 
+      position:relative; display:block; width:100%; height: var(--work-h); 
+      border:2px dashed #bbb; border-radius:10px; overflow:auto; background:#fafafa; 
+    }
+    #stage { position:relative; transform-origin: top left; transform: scale(var(--zoom)); width: max-content; height: max-content; }
+    #annoPhoto { max-width:100%; display:block; }
+
+    .marker {
+      position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+      width:var(--marker-size); height:var(--marker-size); border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      background:#fff; border:2px solid #111; color:#111;
+      font-weight:700; line-height:1; font-size:var(--marker-font);
+      user-select:none; cursor:grab; box-shadow: 0 2px 6px rgba(0,0,0,.12);
+    }
+    .marker:active { cursor:grabbing; }
+
+    .hint { margin-left:8px; color: var(--muted); font-size: 13px; }
+
+    /* Crop overlay */
+    #cropBox { position:absolute; border:2px dashed #ff6a00; background: rgba(255,106,0,0.15); display:none; pointer-events:none; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
+    .grow { flex: 1 1 auto; }
+    .info { color: #555; font-size: 13px; }
+    .zoomgroup { display:flex; align-items:center; gap:8px; }
+    .zoomgroup .btn { width:36px; text-align:center; padding:6px 0; }
+    .zoomgroup input[type="range"]{ width:220px; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Photo Marker Annotator</h1>
+    <p>Load a photo and click to place circled markers (① Ⓐ, etc.). Drag to move, right‑click to delete. Includes <strong>crop/trim</strong>, <strong>rotate</strong>, and <strong>zoom</strong>. The photo panel height is controlled by <code>--work-h</code>.</p>
+
+    <div class="controls">
+      <label><strong>Photo</strong>
+        <input id="imgLoader" type="file" accept="image/*" />
+      </label>
+      <label><strong>Marker preset</strong>
+        <select id="markerPreset">
+          <option value="">— pick —</option>
+          <optgroup label="Numbers (1–20)">
+            <option>①</option><option>②</option><option>③</option><option>④</option><option>⑤</option>
+            <option>⑥</option><option>⑦</option><option>⑧</option><option>⑨</option><option>⑩</option>
+            <option>⑪</option><option>⑫</option><option>⑬</option><option>⑭</option><option>⑮</option>
+            <option>⑯</option><option>⑰</option><option>⑱</option><option>⑲</option><option>⑳</option>
+          </optgroup>
+          <optgroup label="Letters (A–K)">
+            <option>Ⓐ</option><option>Ⓑ</option><option>Ⓒ</option><option>Ⓓ</option><option>Ⓔ</option>
+            <option>Ⓕ</option><option>Ⓖ</option><option>Ⓗ</option><option>Ⓘ</option><option>Ⓙ</option><option>Ⓚ</option>
+          </optgroup>
+        </select>
+      </label>
+      <label><strong>or custom</strong>
+        <input id="customLabel" placeholder="type Ⓐ or ① or any text" style="width:200px;" />
+      </label>
+      <label><strong>Color</strong>
+        <input id="markerColor" type="color" value="#ff4d4f" />
+      </label>
+      <button id="startPlace" class="btn">Add marker</button>
+      <button id="clearAll" class="btn muted">Clear markers</button>
+      <span id="placeHint" class="hint"></span>
+    </div>
+
+    <div class="toolbar">
+      <button id="cropMode" class="btn">Crop / Trim</button>
+      <button id="applyCrop" class="btn primary" style="display:none;">Apply Crop</button>
+      <button id="cancelCrop" class="btn muted" style="display:none;">Cancel</button>
+      <button id="rotCCW" class="btn">⟲ 90° CCW</button>
+      <button id="rotCW" class="btn">⟳ 90° CW</button>
+      <span class="grow"></span>
+      <div class="zoomgroup">
+        <button id="zoomOut" class="btn">−</button>
+        <input id="zoomSlider" type="range" min="25" max="300" step="5" value="100" />
+        <button id="zoomIn" class="btn">+</button>
+        <button id="zoomReset" class="btn muted">Reset</button>
+        <button id="fit" class="btn">Fit</button>
+        <button id="fitW" class="btn">Fit Width</button>
+        <button id="fitH" class="btn">Fit Height</button>
+        <button id="fullscreen" class="btn">⛶ Fullscreen</button>
+      </div>
+    </div>
+
+    <div class="work">
+      <div id="photoWrap">
+        <div id="stage" style="--zoom:1;">
+          <img id="annoPhoto" alt="Load a photo…" />
+          <div id="cropBox"></div>
+          <!-- markers injected here -->
+        </div>
+      </div>
+      <div class="info" id="infoLine" style="margin-top:8px;">Image: — × — px | Display: — × — px @ 100%</div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    const imgLoader = document.getElementById('imgLoader');
+    const photo = document.getElementById('annoPhoto');
+    const wrap = document.getElementById('photoWrap');
+    const stage = document.getElementById('stage');
+    const preset = document.getElementById('markerPreset');
+    const custom = document.getElementById('customLabel');
+    const color = document.getElementById('markerColor');
+    const startBtn = document.getElementById('startPlace');
+    const clearBtn = document.getElementById('clearAll');
+    const hint = document.getElementById('placeHint');
+
+    const cropBtn = document.getElementById('cropMode');
+    const applyCropBtn = document.getElementById('applyCrop');
+    const cancelCropBtn = document.getElementById('cancelCrop');
+    const cropBox = document.getElementById('cropBox');
+    const rotCWBtn = document.getElementById('rotCW');
+    const rotCCWBtn = document.getElementById('rotCCW');
+
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const zoomResetBtn = document.getElementById('zoomReset');
+    const fitBtn = document.getElementById('fit');
+    const fitWBtn = document.getElementById('fitW');
+    const fitHBtn = document.getElementById('fitH');
+    const fsBtn = document.getElementById('fullscreen');
+    const infoLine = document.getElementById('infoLine');
+
+    function updateInfo(){
+      if(!photo.src){ infoLine.textContent = 'Image: — × — px | Display: — × — px @ ' + Math.round(currentZoom*100) + '%'; return; }
+      const natW = photo.naturalWidth || 0; const natH = photo.naturalHeight || 0;
+      const rect = photo.getBoundingClientRect();
+      infoLine.textContent = `Image: ${natW} × ${natH} px | Display: ${Math.round(rect.width)} × ${Math.round(rect.height)} px @ ${Math.round(currentZoom*100)}%`;
+    }
+
+    imgLoader.addEventListener('change', (e)=>{
+      const f = e.target.files && e.target.files[0];
+      if(!f) return;
+      const url = URL.createObjectURL(f);
+      photo.onload = ()=>{ updateInfo(); fitContain(); };
+      photo.src = url;
+      hint.textContent = 'Image loaded. Choose a marker, then click "Add marker".';
+      // Remove existing markers when new image loads
+      stage.querySelectorAll('.marker').forEach(m => m.remove());
+    });
+
+    let placing = null; // label to place next
+    startBtn.addEventListener('click', ()=>{
+      const label = custom.value.trim() || preset.value.trim();
+      if(!label){ hint.textContent = 'Pick a preset or type a custom label first.'; return; }
+      placing = label;
+      hint.textContent = 'Click on the photo to place ' + label + '. (Drag to move. Right‑click to delete.)';
+    });
+
+    clearBtn.addEventListener('click', ()=>{
+      stage.querySelectorAll('.marker').forEach(m => m.remove());
+      hint.textContent = 'Markers cleared.';
+    });
+
+    // place marker on click (only within the image/stage)
+    stage.addEventListener('click', (ev)=>{
+      if(!placing || !photo.src || cropActive) return;
+      const rect = photo.getBoundingClientRect();
+      const withinX = ev.clientX >= rect.left && ev.clientX <= rect.right;
+      const withinY = ev.clientY >= rect.top && ev.clientY <= rect.bottom;
+      if(!withinX || !withinY) return;
+
+      const xPct = ((ev.clientX - rect.left) / rect.width) * 100;
+      const yPct = ((ev.clientY - rect.top) / rect.height) * 100;
+      addMarker(placing, xPct, yPct, color.value);
+      placing = null;
+      hint.textContent = 'Marker added. Repeat to add more.';
+    });
+
+    function addMarker(text, xPct, yPct, colorHex){
+      const m = document.createElement('div');
+      m.className = 'marker';
+      m.textContent = text;
+      m.style.left = xPct + '%';
+      m.style.top = yPct + '%';
+      m.style.borderColor = colorHex; m.style.color = '#111';
+      m.style.background = '#fff';
+
+      // drag behavior
+      let dragging = false; let startX=0, startY=0;
+      m.addEventListener('mousedown', (e)=>{ if(cropActive) return; dragging=true; startX=e.clientX; startY=e.clientY; e.preventDefault(); });
+      document.addEventListener('mousemove', (e)=>{
+        if(!dragging) return;
+        const rect = photo.getBoundingClientRect();
+        const dx = ((e.clientX - startX) / rect.width) * 100;
+        const dy = ((e.clientY - startY) / rect.height) * 100;
+        const curX = parseFloat(m.style.left);
+        const curY = parseFloat(m.style.top);
+        m.style.left = (curX + dx) + '%';
+        m.style.top = (curY + dy) + '%';
+        startX = e.clientX; startY = e.clientY;
+      });
+      document.addEventListener('mouseup', ()=> dragging=false);
+
+      // right-click to delete
+      m.addEventListener('contextmenu', (e)=>{ if(cropActive) return; e.preventDefault(); m.remove(); });
+
+      stage.appendChild(m);
+    }
+
+    // ---- Crop / Trim ----
+    let cropActive = false;
+    let cropStart = null; // {x,y} px screen space
+    let cropRectPx = null; // {left, top, width, height} in px screen space
+
+    cropBtn.addEventListener('click', ()=>{
+      if(!photo.src) { hint.textContent = 'Load an image first.'; return; }
+      cropActive = true;
+      cropBox.style.display = 'none';
+      applyCropBtn.style.display = 'inline-block';
+      cancelCropBtn.style.display = 'inline-block';
+      hint.textContent = 'Crop mode: click‑drag on the image to draw a rectangle.';
+    });
+
+    cancelCropBtn.addEventListener('click', ()=>{
+      cropActive = false; cropBox.style.display = 'none'; cropStart=null; cropRectPx=null;
+      applyCropBtn.style.display='none'; cancelCropBtn.style.display='none';
+      hint.textContent = 'Crop cancelled.';
+    });
+
+    stage.addEventListener('mousedown', (e)=>{
+      if(!cropActive) return;
+      const rect = photo.getBoundingClientRect();
+      if(e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
+      cropStart = { x: e.clientX, y: e.clientY };
+      cropRectPx = { left: cropStart.x, top: cropStart.y, width: 0, height: 0 };
+      cropBox.style.display = 'block';
+      updateCropBox();
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e)=>{
+      if(!cropActive || !cropStart) return;
+      const rect = photo.getBoundingClientRect();
+      const x1 = Math.max(rect.left, Math.min(cropStart.x, e.clientX));
+      const y1 = Math.max(rect.top, Math.min(cropStart.y, e.clientY));
+      const x2 = Math.min(rect.right, Math.max(cropStart.x, e.clientX));
+      const y2 = Math.min(rect.bottom, Math.max(cropStart.y, e.clientY));
+      cropRectPx = { left: x1, top: y1, width: (x2 - x1), height: (y2 - y1) };
+      updateCropBox();
+    });
+
+    document.addEventListener('mouseup', ()=>{ if(cropActive) cropStart=null; });
+
+    function updateCropBox(){
+      const stageRect = stage.getBoundingClientRect();
+      cropBox.style.left = (cropRectPx.left - stageRect.left) + 'px';
+      cropBox.style.top = (cropRectPx.top - stageRect.top) + 'px';
+      cropBox.style.width = cropRectPx.width + 'px';
+      cropBox.style.height = cropRectPx.height + 'px';
+    }
+
+    applyCropBtn.addEventListener('click', ()=>{
+      if(!cropRectPx || cropRectPx.width < 5 || cropRectPx.height < 5){ hint.textContent = 'Draw a larger crop rectangle.'; return; }
+      // Convert crop rect from px to percentage of photo
+      const imgRect = photo.getBoundingClientRect();
+      const x0Pct = ((cropRectPx.left - imgRect.left) / imgRect.width) * 100;
+      const y0Pct = ((cropRectPx.top - imgRect.top) / imgRect.height) * 100;
+      const wPct = (cropRectPx.width / imgRect.width) * 100;
+      const hPct = (cropRectPx.height / imgRect.height) * 100;
+
+      // Draw cropped image to canvas at natural resolution
+      const natW = photo.naturalWidth, natH = photo.naturalHeight;
+      const sx = (x0Pct/100) * natW;
+      const sy = (y0Pct/100) * natH;
+      const sw = (wPct/100) * natW;
+      const sh = (hPct/100) * natH;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(sw));
+      canvas.height = Math.max(1, Math.round(sh));
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(photo, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const removed = adjustMarkersForCrop(x0Pct, y0Pct, wPct, hPct);
+        photo.onload = ()=>{ URL.revokeObjectURL(url); updateInfo(); fitContain(); };
+        photo.src = url;
+        cropActive = false; cropBox.style.display='none';
+        applyCropBtn.style.display='none'; cancelCropBtn.style.display='none';
+        hint.textContent = 'Cropped.' + (removed>0 ? ' ('+removed+' markers were outside and removed.)' : '');
+      }, 'image/png');
+    });
+
+    function adjustMarkersForCrop(x0Pct, y0Pct, wPct, hPct){
+      let removed = 0;
+      const markers = stage.querySelectorAll('.marker');
+      markers.forEach(m => {
+        const lx = parseFloat(m.style.left);
+        const ly = parseFloat(m.style.top);
+        const inside = (lx>=x0Pct && lx<=x0Pct+wPct && ly>=y0Pct && ly<=y0Pct+hPct);
+        if(!inside){ m.remove(); removed++; return; }
+        const nx = ((lx - x0Pct) / wPct) * 100;
+        const ny = ((ly - y0Pct) / hPct) * 100;
+        m.style.left = nx + '%';
+        m.style.top = ny + '%';
+      });
+      return removed;
+    }
+
+    // ---- Rotate 90° helpers ----
+    rotCWBtn.addEventListener('click', ()=> rotate(90));
+    rotCCWBtn.addEventListener('click', ()=> rotate(-90));
+
+    function rotate(deg){
+      if(!photo.src) { hint.textContent = 'Load an image first.'; return; }
+      const natW = photo.naturalWidth, natH = photo.naturalHeight;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if(Math.abs(deg) % 180 === 90){ canvas.width = natH; canvas.height = natW; }
+      else { canvas.width = natW; canvas.height = natH; }
+
+      ctx.translate(canvas.width/2, canvas.height/2);
+      ctx.rotate(deg * Math.PI/180);
+      ctx.drawImage(photo, -natW/2, -natH/2);
+
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        adjustMarkersForRotation(deg);
+        photo.onload = ()=>{ URL.revokeObjectURL(url); updateInfo(); fitContain(); };
+        photo.src = url;
+        hint.textContent = 'Rotated ' + (deg>0? '90° CW' : '90° CCW') + '.';
+      }, 'image/png');
+    }
+
+    function adjustMarkersForRotation(deg){
+      const markers = stage.querySelectorAll('.marker');
+      markers.forEach(m => {
+        const lx = parseFloat(m.style.left);
+        const ly = parseFloat(m.style.top);
+        let nx=lx, ny=ly;
+        const d = (deg%360+360)%360;
+        if(d === 90){ nx = 100 - ly; ny = lx; }
+        else if(d === 270){ nx = ly; ny = 100 - lx; }
+        else if(d === 180){ nx = 100 - lx; ny = 100 - ly; }
+        m.style.left = nx + '%';
+        m.style.top = ny + '%';
+      });
+    }
+
+    // ---- Zoom ----
+    let currentZoom = 1;
+    function setZoom(z){
+      currentZoom = Math.min(3, Math.max(0.25, z));
+      stage.style.setProperty('--zoom', currentZoom);
+      zoomSlider.value = Math.round(currentZoom*100);
+      updateInfo();
+    }
+    function baseRect(){
+      const r = photo.getBoundingClientRect();
+      return { w: r.width / currentZoom, h: r.height / currentZoom };
+    }
+    function fitContain(){
+      if(!photo.src) return;
+      const b = baseRect();
+      setZoom(Math.min(wrap.clientWidth / b.w, wrap.clientHeight / b.h));
+    }
+    function fitWidth(){ if(!photo.src) return; const b = baseRect(); setZoom(wrap.clientWidth / b.w); }
+    function fitHeight(){ if(!photo.src) return; const b = baseRect(); setZoom(wrap.clientHeight / b.h); }
+
+    zoomSlider.addEventListener('input', ()=> setZoom(parseInt(zoomSlider.value,10)/100));
+    zoomInBtn.addEventListener('click', ()=> setZoom(currentZoom + 0.1));
+    zoomOutBtn.addEventListener('click', ()=> setZoom(currentZoom - 0.1));
+    zoomResetBtn.addEventListener('click', ()=> setZoom(1));
+    fitBtn.addEventListener('click', fitContain);
+    fitWBtn.addEventListener('click', fitWidth);
+    fitHBtn.addEventListener('click', fitHeight);
+
+    // Fullscreen
+    const inFS = ()=> document.fullscreenElement != null;
+    fsBtn.addEventListener('click', async ()=>{
+      try{
+        if(!inFS()) await (document.documentElement.requestFullscreen ? document.documentElement.requestFullscreen() : wrap.requestFullscreen());
+        else await document.exitFullscreen();
+        setTimeout(()=>{ fitContain(); }, 100);
+      }catch(e){ console.warn(e); }
+    });
+
+    window.addEventListener('resize', ()=>{ updateInfo(); });
+  })();
+  </script>
+</body>
+</html>
